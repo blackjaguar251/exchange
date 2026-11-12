@@ -13,4 +13,19 @@ services:
       - key: P2P_ARMY_API_KEY
         sync: false
       - key: FRONTEND_ORIGIN
-        sync: false
+        fromService:
+          type: web
+          name: exchange-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+  - type: web
+    name: exchange-frontend
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: EXCHANGE_API_URL
+        fromService:
+          type: web
+          name: exchange-backend
+          envVarKey: RENDER_EXTERNAL_URL
