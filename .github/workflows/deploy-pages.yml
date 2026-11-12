@@ -36,7 +36,6 @@ jobs:
       - name: Prepare frontend artifact
         run: |
           mkdir -p site/frontend
-          cp -R frontend/. site/
           cp -R frontend/. site/frontend/
 
       - name: Upload frontend artifact
