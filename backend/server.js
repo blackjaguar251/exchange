@@ -60,7 +60,7 @@ app.get('/api/usdt-to-birr', async (_request, response) => {
 
 app.get('/api/rate', async (_request, response) => {
   try {
-    const result = await pool.query('SELECT birr, created_at FROM usdtobirr WHERE id = 1')
+    const result = await pool.query('SELECT birr, deduction, created_at FROM usdtobirr WHERE id = 1')
     if (!result.rows[0]) return response.status(404).json({ error: 'Rate is not available yet' })
     return response.json(result.rows[0])
   } catch (error) {
