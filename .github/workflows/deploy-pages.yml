@@ -26,12 +26,8 @@ jobs:
 
       - name: Inject Render backend URL
         env:
-          EXCHANGE_API_URL: ${{ secrets.EXCHANGE_API_URL }}
+          EXCHANGE_API_URL: ${{ secrets.EXCHANGE_API_URL || 'https://exchange-backend.onrender.com' }}
         run: |
-          if [ -z "$EXCHANGE_API_URL" ]; then
-            echo "EXCHANGE_API_URL GitHub repository secret is required"
-            exit 1
-          fi
           sed -i "s|__EXCHANGE_API_URL__|$EXCHANGE_API_URL|g" frontend/index.html
 
       - name: Configure Pages
