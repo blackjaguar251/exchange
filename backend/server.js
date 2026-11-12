@@ -136,9 +136,10 @@ app.post('/api/login', async (request, response) => {
 })
 
 app.post('/api/receipts', async (request, response) => {
-  const { username, paymentMethod, senderName, receiverName, receiverBankName, receiverBankAccount, fileName, data } = request.body || {}
-  if (!username?.trim() || !senderName?.trim() || !receiverName?.trim() || !receiverBankName?.trim() || !receiverBankAccount?.trim() || !['zelle', 'cashapp'].includes(paymentMethod) || !fileName || !data) {
-    return response.status(400).json({ error: 'Sender, receiver, bank name, bank account, payment method, and receipt are required' })
+  const { username, amount, paymentMethod, senderName, receiverName, receiverBankName, receiverBankAccount, fileName, data } = request.body || {}
+  const numericAmount = Number(amount)
+  if (!username?.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0 || !senderName?.trim() || !receiverName?.trim() || !receiverBankName?.trim() || !receiverBankAccount?.trim() || !['zelle', 'cashapp'].includes(paymentMethod) || !fileName || !data) {
+    return response.status(400).json({ error: 'Amount, sender, receiver, bank details, payment method, and receipt are required' })
   }
   const match = String(data).match(/^data:([^;]+);base64,(.+)$/)
   if (!match) return response.status(400).json({ error: 'Receipt format is invalid' })
@@ -152,7 +153,7 @@ app.post('/api/receipts', async (request, response) => {
     const savedName = `${Date.now()}-${crypto.randomUUID()}${extension}`
     await mkdir(uploadDirectory, { recursive: true })
     await writeFile(path.join(uploadDirectory, savedName), fileBuffer)
-    const saved = await pool.query('INSERT INTO exchange_receipts (user_email, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, stored_file, mime_type, file_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at', [username.trim().toLowerCase(), paymentMethod, senderName.trim(), receiverName.trim(), receiverBankName.trim(), receiverBankAccount.trim(), fileName, savedName, match[1], fileBuffer, 'submitted'])
+    const saved = await pool.query('INSERT INTO exchange_receipts (user_email, amount, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, stored_file, mime_type, file_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at', [username.trim().toLowerCase(), numericAmount, paymentMethod, senderName.trim(), receiverName.trim(), receiverBankName.trim(), receiverBankAccount.trim(), fileName, savedName, match[1], fileBuffer, 'submitted'])
     return response.status(201).json({ ok: true, id: saved.rows[0].id, fileName: savedName, paymentMethod, createdAt: saved.rows[0].created_at })
   } catch (error) {
     return response.status(500).json({ error: `Receipt could not be saved: ${error.message}` })
@@ -163,8 +164,8 @@ app.get('/api/receipts', async (request, response) => {
   const email = String(request.query.email || '').trim().toLowerCase()
   try {
     const result = email
-      ? await pool.query('SELECT id, user_email, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, status, created_at FROM exchange_receipts WHERE user_email = $1 ORDER BY created_at DESC', [email])
-      : await pool.query('SELECT id, user_email, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, status, created_at FROM exchange_receipts ORDER BY created_at DESC')
+      ? await pool.query('SELECT id, user_email, amount, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, status, created_at FROM exchange_receipts WHERE user_email = $1 ORDER BY created_at DESC', [email])
+      : await pool.query('SELECT id, user_email, amount, payment_method, sender_name, receiver_name, receiver_bank_name, receiver_bank_account, original_file, status, created_at FROM exchange_receipts ORDER BY created_at DESC')
     return response.json({ receipts: result.rows })
   } catch (error) {
     return response.status(500).json({ error: `Receipt history unavailable: ${error.message}` })
@@ -183,6 +184,7 @@ app.listen(port, '0.0.0.0', async () => {
     await pool.query('CREATE TABLE IF NOT EXISTS exchange_receipts (id BIGSERIAL PRIMARY KEY, user_email TEXT NOT NULL, payment_method TEXT NOT NULL CHECK (payment_method IN (\'zelle\', \'cashapp\')), original_file TEXT NOT NULL, stored_file TEXT NOT NULL, mime_type TEXT NOT NULL DEFAULT \'application/octet-stream\', file_data BYTEA, status TEXT NOT NULL DEFAULT \'submitted\', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS sender_name TEXT')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS receiver_name TEXT')
+    await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS amount NUMERIC(20,8)')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS receiver_bank_name TEXT')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS receiver_bank_account TEXT')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT \'application/octet-stream\'')
