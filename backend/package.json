@@ -1,0 +1,14 @@
+{
+  "name": "exchange-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "start": "node --env-file-if-exists=.env server.js"
+  },
+  "dependencies": {
+    "express": "latest",
+    "pg": "^8.23.1"
+  }
+}

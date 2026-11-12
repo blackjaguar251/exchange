@@ -1,0 +1,6 @@
+backend/.env
+backend/node_modules/
+backend/upliadFile/*
+!backend/upliadFile/.gitkeep
+frontend/node_modules/
+.DS_Store

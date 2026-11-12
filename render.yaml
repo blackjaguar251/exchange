@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: exchange-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: P2P_ARMY_API_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
