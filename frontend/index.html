@@ -11,7 +11,7 @@
 <div id="root"></div>
 <script type="module">
 window.EXCHANGE_API_URL = '__EXCHANGE_API_URL__';
-const configuredApi = window.EXCHANGE_API_URL === '__EXCHANGE_API_URL__' ? 'http://localhost:3001' : window.EXCHANGE_API_URL;
+const configuredApi = window.EXCHANGE_API_URL === '__EXCHANGE_API_URL__' ? 'https://exchange-boz3.onrender.com' : window.EXCHANGE_API_URL;
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init) => nativeFetch(typeof input === 'string' ? input.replace('http://localhost:3001', configuredApi) : input, init);
 import React from 'https://esm.sh/react@19';
