@@ -103,17 +103,18 @@ async function verifyPassword(password, stored) {
 }
 
 app.post('/api/register', async (request, response) => {
+  const name = String(request.body?.name || '').trim()
   const phone = String(request.body?.phone || '').trim()
   const password = String(request.body?.password || '')
-  if (!phone || !/^[+\d][\d\s().-]{6,}$/.test(phone) || password.length < 6) {
-    return response.status(400).json({ error: 'Enter a valid phone number and a password with at least 6 characters' })
+  if (!name || !phone || !/^[+\d][\d\s().-]{6,}$/.test(phone) || password.length < 6) {
+    return response.status(400).json({ error: 'Enter your name, a valid phone number, and a password with at least 6 characters' })
   }
   try {
     const existing = await pool.query('SELECT 1 FROM exchange_users WHERE email = $1 OR phone_number = $1', [phone])
     if (existing.rows[0]) return response.status(409).json({ error: 'That phone number is already registered' })
     const passwordHash = await hashPassword(password)
-    await pool.query('INSERT INTO exchange_users (email, phone_number, role, password_hash, adminstatus) VALUES ($1, $1, \'user\', $2, FALSE)', [phone, passwordHash])
-    return response.status(201).json({ ok: true, role: 'user', email: phone, phone, adminstatus: false })
+    await pool.query('INSERT INTO exchange_users (email, full_name, phone_number, role, password_hash, adminstatus) VALUES ($1, $2, $1, \'user\', $3, FALSE)', [phone, name, passwordHash])
+    return response.status(201).json({ ok: true, role: 'user', email: phone, phone, name, adminstatus: false })
   } catch (error) {
     return response.status(500).json({ error: `Registration unavailable: ${error.message}` })
   }
@@ -126,10 +127,10 @@ app.post('/api/login', async (request, response) => {
     return response.status(400).json({ error: 'Role, username, and password are required' })
   }
   try {
-    const result = await pool.query('SELECT email, phone_number, role, password_hash, adminstatus FROM exchange_users WHERE (email = $1 OR phone_number = $1) AND role = $2', [loginEmail, role])
+    const result = await pool.query('SELECT email, full_name, phone_number, role, password_hash, adminstatus FROM exchange_users WHERE (email = $1 OR phone_number = $1) AND role = $2', [loginEmail, role])
     const account = result.rows[0]
     if (!account || !(await verifyPassword(password, account.password_hash))) return response.status(401).json({ error: 'Invalid email or password' })
-    return response.json({ ok: true, role: account.role, email: account.phone_number || account.email, phone: account.phone_number, adminstatus: account.adminstatus })
+    return response.json({ ok: true, role: account.role, email: account.phone_number || account.email, phone: account.phone_number, name: account.full_name, adminstatus: account.adminstatus })
   } catch (error) {
     return response.status(500).json({ error: `Login unavailable: ${error.message}` })
   }
@@ -178,6 +179,7 @@ app.listen(port, '0.0.0.0', async () => {
     await pool.query('CREATE TABLE IF NOT EXISTS usdtobirr (id BIGINT PRIMARY KEY, usdt NUMERIC(20,8) NOT NULL, birr NUMERIC(20,8) NOT NULL, deduction NUMERIC(20,8) NOT NULL DEFAULT 9, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
     await pool.query('ALTER TABLE usdtobirr ADD COLUMN IF NOT EXISTS deduction NUMERIC(20,8) NOT NULL DEFAULT 9')
     await pool.query('CREATE TABLE IF NOT EXISTS exchange_users (email TEXT PRIMARY KEY, role TEXT NOT NULL CHECK (role IN (\'agent\', \'user\')), password_hash TEXT NOT NULL, adminstatus BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
+    await pool.query('ALTER TABLE exchange_users ADD COLUMN IF NOT EXISTS full_name TEXT')
     await pool.query('ALTER TABLE exchange_users ADD COLUMN IF NOT EXISTS phone_number TEXT')
     await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS exchange_users_phone_number_idx ON exchange_users (phone_number) WHERE phone_number IS NOT NULL')
     await pool.query('ALTER TABLE exchange_users ADD COLUMN IF NOT EXISTS adminstatus BOOLEAN NOT NULL DEFAULT FALSE')
