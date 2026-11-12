@@ -102,6 +102,23 @@ async function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(Buffer.from(key, 'hex'), derived)
 }
 
+app.post('/api/register', async (request, response) => {
+  const phone = String(request.body?.phone || '').trim()
+  const password = String(request.body?.password || '')
+  if (!phone || !/^[+\d][\d\s().-]{6,}$/.test(phone) || password.length < 6) {
+    return response.status(400).json({ error: 'Enter a valid phone number and a password with at least 6 characters' })
+  }
+  try {
+    const existing = await pool.query('SELECT 1 FROM exchange_users WHERE email = $1 OR phone_number = $1', [phone])
+    if (existing.rows[0]) return response.status(409).json({ error: 'That phone number is already registered' })
+    const passwordHash = await hashPassword(password)
+    await pool.query('INSERT INTO exchange_users (email, phone_number, role, password_hash, adminstatus) VALUES ($1, $1, \'user\', $2, FALSE)', [phone, passwordHash])
+    return response.status(201).json({ ok: true, role: 'user', email: phone, phone, adminstatus: false })
+  } catch (error) {
+    return response.status(500).json({ error: `Registration unavailable: ${error.message}` })
+  }
+})
+
 app.post('/api/login', async (request, response) => {
   const { role, email, username, password } = request.body || {}
   const loginEmail = String(email || username || '').trim().toLowerCase()
@@ -109,19 +126,19 @@ app.post('/api/login', async (request, response) => {
     return response.status(400).json({ error: 'Role, username, and password are required' })
   }
   try {
-    const result = await pool.query('SELECT email, role, password_hash, adminstatus FROM exchange_users WHERE email = $1 AND role = $2', [loginEmail, role])
+    const result = await pool.query('SELECT email, phone_number, role, password_hash, adminstatus FROM exchange_users WHERE (email = $1 OR phone_number = $1) AND role = $2', [loginEmail, role])
     const account = result.rows[0]
     if (!account || !(await verifyPassword(password, account.password_hash))) return response.status(401).json({ error: 'Invalid email or password' })
-    return response.json({ ok: true, role: account.role, email: account.email, adminstatus: account.adminstatus })
+    return response.json({ ok: true, role: account.role, email: account.phone_number || account.email, phone: account.phone_number, adminstatus: account.adminstatus })
   } catch (error) {
     return response.status(500).json({ error: `Login unavailable: ${error.message}` })
   }
 })
 
 app.post('/api/receipts', async (request, response) => {
-  const { username, paymentMethod, fileName, data } = request.body || {}
-  if (!username?.trim() || !['zelle', 'cashapp'].includes(paymentMethod) || !fileName || !data) {
-    return response.status(400).json({ error: 'Username, payment method, and receipt are required' })
+  const { username, paymentMethod, senderName, receiverName, receiverBankAccount, fileName, data } = request.body || {}
+  if (!username?.trim() || !senderName?.trim() || !receiverName?.trim() || !receiverBankAccount?.trim() || !['zelle', 'cashapp'].includes(paymentMethod) || !fileName || !data) {
+    return response.status(400).json({ error: 'Sender, receiver, bank account, payment method, and receipt are required' })
   }
   const match = String(data).match(/^data:([^;]+);base64,(.+)$/)
   if (!match) return response.status(400).json({ error: 'Receipt format is invalid' })
@@ -135,7 +152,7 @@ app.post('/api/receipts', async (request, response) => {
     const savedName = `${Date.now()}-${crypto.randomUUID()}${extension}`
     await mkdir(uploadDirectory, { recursive: true })
     await writeFile(path.join(uploadDirectory, savedName), fileBuffer)
-    const saved = await pool.query('INSERT INTO exchange_receipts (user_email, payment_method, original_file, stored_file, mime_type, file_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at', [username.trim().toLowerCase(), paymentMethod, fileName, savedName, match[1], fileBuffer, 'submitted'])
+    const saved = await pool.query('INSERT INTO exchange_receipts (user_email, payment_method, sender_name, receiver_name, receiver_bank_account, original_file, stored_file, mime_type, file_data, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at', [username.trim().toLowerCase(), paymentMethod, senderName.trim(), receiverName.trim(), receiverBankAccount.trim(), fileName, savedName, match[1], fileBuffer, 'submitted'])
     return response.status(201).json({ ok: true, id: saved.rows[0].id, fileName: savedName, paymentMethod, createdAt: saved.rows[0].created_at })
   } catch (error) {
     return response.status(500).json({ error: `Receipt could not be saved: ${error.message}` })
@@ -160,8 +177,13 @@ app.listen(port, '0.0.0.0', async () => {
     await pool.query('CREATE TABLE IF NOT EXISTS usdtobirr (id BIGINT PRIMARY KEY, usdt NUMERIC(20,8) NOT NULL, birr NUMERIC(20,8) NOT NULL, deduction NUMERIC(20,8) NOT NULL DEFAULT 9, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
     await pool.query('ALTER TABLE usdtobirr ADD COLUMN IF NOT EXISTS deduction NUMERIC(20,8) NOT NULL DEFAULT 9')
     await pool.query('CREATE TABLE IF NOT EXISTS exchange_users (email TEXT PRIMARY KEY, role TEXT NOT NULL CHECK (role IN (\'agent\', \'user\')), password_hash TEXT NOT NULL, adminstatus BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
+    await pool.query('ALTER TABLE exchange_users ADD COLUMN IF NOT EXISTS phone_number TEXT')
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS exchange_users_phone_number_idx ON exchange_users (phone_number) WHERE phone_number IS NOT NULL')
     await pool.query('ALTER TABLE exchange_users ADD COLUMN IF NOT EXISTS adminstatus BOOLEAN NOT NULL DEFAULT FALSE')
     await pool.query('CREATE TABLE IF NOT EXISTS exchange_receipts (id BIGSERIAL PRIMARY KEY, user_email TEXT NOT NULL, payment_method TEXT NOT NULL CHECK (payment_method IN (\'zelle\', \'cashapp\')), original_file TEXT NOT NULL, stored_file TEXT NOT NULL, mime_type TEXT NOT NULL DEFAULT \'application/octet-stream\', file_data BYTEA, status TEXT NOT NULL DEFAULT \'submitted\', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
+    await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS sender_name TEXT')
+    await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS receiver_name TEXT')
+    await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS receiver_bank_account TEXT')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT \'application/octet-stream\'')
     await pool.query('ALTER TABLE exchange_receipts ADD COLUMN IF NOT EXISTS file_data BYTEA')
     for (const account of [{ email: 'agent@exchange.com', role: 'agent', adminstatus: false }, { email: 'user@exchange.com', role: 'user', adminstatus: false }, { email: 'admin@exchange.com', role: 'agent', adminstatus: true }]) {
