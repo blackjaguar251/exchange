@@ -26,7 +26,7 @@ jobs:
 
       - name: Inject Render backend URL
         env:
-          EXCHANGE_API_URL: ${{ secrets.EXCHANGE_API_URL || 'https://exchange-backend.onrender.com' }}
+          EXCHANGE_API_URL: ${{ secrets.EXCHANGE_API_URL || 'https://exchange-boz3.onrender.com' }}
         run: |
           sed -i "s|__EXCHANGE_API_URL__|$EXCHANGE_API_URL|g" frontend/index.html
 
