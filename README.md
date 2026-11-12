@@ -22,3 +22,9 @@ The backend reads `DATABASE_URL`, `P2P_ARMY_API_KEY`, and `FRONTEND_ORIGIN` from
 ## Render and Neon
 
 `render.yaml` deploys only the Express backend. In Render, set `DATABASE_URL` to the Neon connection string with `sslmode=require`, set `P2P_ARMY_API_KEY`, and set `FRONTEND_ORIGIN` to the deployed frontend origin. The backend listens on Render's `PORT` and `0.0.0.0`.
+
+## GitHub Pages frontend
+
+The GitHub Actions workflow deploys `frontend` to GitHub Pages. In the repository settings, add an Actions secret named `EXCHANGE_API_URL` containing the deployed Render backend URL, for example `https://exchange-backend.onrender.com`. Then set **Settings → Pages → Source** to **GitHub Actions**. The frontend URL will be:
+
+`https://blackjaguar251.github.io/exchange/`
